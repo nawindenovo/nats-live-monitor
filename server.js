@@ -50,8 +50,12 @@ app.post('/api/nats/connect', upload.single('credsFile'), async (req, res) => {
     console.log(req.file);
    
         
-      const credsData = fs.readFileSync(path.resolve("uploads/"+credsFile));
-      options.authenticator = credsAuthenticator(credsData);
+const credsPath = path.join(__dirname, "uploads", credsFile);
+console.log("Resolved creds path:", credsPath); // debugging
+const credsData = fs.readFileSync(credsPath);
+options.authenticator = credsAuthenticator(credsData);
+
+
       
       // Clean up uploaded file
     //   fs.unlinkSync(req.file.path);
