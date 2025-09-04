@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NATS Client Dashboard</title>
+  <style>
+    :root {
+      --primary-color: #2c3e50;
+      --secondary-color: #3498db;
+      --success-color: #27ae60;
+      --danger-color: #e74c3c;
+      --light-color: #ecf0f1;
+      --dark-color: #34495e;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      background-color: #f5f7fa;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    header {
+      background-color: var(--primary-color);
+      color: white;
+      padding: 1rem;
+      text-align: center;
+      border-radius: 5px 5px 0 0;
+      position: relative;
+    }
+
+    #logoutBtn {
+      position: absolute;
+      top: 15px;
+      right: 20px;
+      background: var(--danger-color);
+      color: white;
+      padding: 5px 12px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    #logoutBtn:hover {
+      background: #c0392b;
+    }
+
+    .card {
+      background: white;
+      border-radius: 5px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      margin-bottom: 20px;
+    }
+
+    .card-header {
+      padding: 15px 20px;
+      border-bottom: 1px solid #eee;
+      font-weight: bold;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .card-body {
+      padding: 20px;
+    }
+
+    .form-group {
+      margin-bottom: 15px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 500;
+    }
+
+    input[type="text"],
+    input[type="password"],
+    input[type="file"],
+    select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 16px;
+    }
+
+    button {
+      padding: 10px 15px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      transition: background-color 0.3s;
+    }
+
+    .btn-primary {
+      background-color: var(--secondary-color);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background-color: #2980b9;
+    }
+
+    .btn-success {
+      background-color: var(--success-color);
+      color: white;
+    }
+
+    .btn-success:hover {
+      background-color: #219a52;
+    }
+
+    .btn-danger {
+      background-color: var(--danger-color);
+      color: white;
+    }
+
+    .btn-danger:hover {
+      background-color: #c0392b;
+    }
+
+    .connection-status {
+      display: inline-block;
+      padding: 5px 10px;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .status-connected {
+      background-color: #e8f5e9;
+      color: #2e7d32;
+    }
+
+    .status-disconnected {
+      background-color: #ffebee;
+      color: #c62828;
+    }
+
+    .messages-container {
+      height: 400px;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 10px;
+      background-color: #fafafa;
+      font-family: monospace;
+      font-size: 14px;
+    }
+
+    .message {
+      padding: 8px 5px;
+      border-bottom: 1px solid #eee;
+    }
+
+    .message:hover {
+      background-color: #f0f0f0;
+    }
+
+    .message-subject {
+      font-weight: bold;
+      color: var(--secondary-color);
+    }
+
+    .message-time {
+      color: #7f8c8d;
+      font-size: 12px;
+      margin-right: 10px;
+    }
+
+    .filters {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+
+    .filter-input {
+      flex: 1;
+    }
+
+    .stats {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 10px;
+      font-size: 14px;
+      color: #7f8c8d;
+    }
+
+    .tab-container {
+      margin-top: 20px;
+    }
+
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid #ddd;
+    }
+
+    .tab {
+      padding: 10px 20px;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+    }
+
+    .tab.active {
+      border-bottom: 2px solid var(--secondary-color);
+      color: var(--secondary-color);
+      font-weight: 500;
+    }
+
+    .tab-content {
+      padding: 20px 0;
+    }
+
+    .tab-pane {
+      display: none;
+    }
+
+    .tab-pane.active {
+      display: block;
+    }
+
+    @media (max-width: 768px) {
+      .filters {
+        flex-direction: column;
+      }
+    }
+
+    /* Login Screen */
+    #loginScreen {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background: #f5f7fa;
+    }
+    .login-box {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+      width: 300px;
+      text-align: center;
+    }
+    .login-box h2 {
+      margin-bottom: 20px;
+      color: var(--primary-color);
+    }
+    .login-box input {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 15px;
+      font-size: 16px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+    }
+    .login-box button {
+      width: 100%;
+    }
+    .error {
+      color: var(--danger-color);
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+
+    #dashboard {
+      display: none; /* Hidden until login */
+    }
+  </style>
+</head>
+<body>
+  <!-- Login Screen -->
+  <div id="loginScreen">
+    <div class="login-box">
+      <h2>Login</h2>
+      <div id="errorMsg" class="error"></div>
+      <input type="password" id="pinInput" placeholder="Enter PIN">
+      <button id="loginBtn" class="btn-primary">Login</button>
+    </div>
+  </div>
+
+  <!-- Dashboard -->
+  <div id="dashboard">
+    <div class="container">
+      <header>
+        <h1>NATS Client Dashboard</h1>
+        <button id="logoutBtn">Logout</button>
+      </header>
+
+      <!-- Your existing dashboard code -->
+      <div class="card">
+        <div class="card-header">
+          <span>Connection Configuration</span>
+          <span id="connectionStatus" class="connection-status status-disconnected">Disconnected</span>
+        </div>
+        <div class="card-body">
+          <form id="connectionForm">
+            <div class="form-group">
+              <label for="serverUrl">NATS Server URL</label>
+              <input type="text" id="serverUrl" value="nats://nats.ipospays.tech">
+            </div>
+            <div class="form-group">
+              <label for="credsFile">NATS Credentials File</label>
+              <select name="credsFile" id="credsFile">
+                <option value="dev">DEV</option>
+                <option value="uat">UAT</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="subjectFilter">Subject Filter (Optional)</label>
+              <input type="text" id="subjectFilter" placeholder="tcp.status.>" value="tcp.status.>">
+            </div>
+            <button type="submit" class="btn-primary" id="connectBtn">Connect</button>
+            <button type="button" class="btn-danger" id="disconnectBtn" disabled>Disconnect</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="tab-container">
+        <div class="tabs">
+          <div class="tab active" data-tab="messages">Messages</div>
+        </div>
+        <div class="tab-content">
+          <div class="tab-pane active" id="messages-tab">
+            <div class="card">
+              <div class="card-header">
+                <span>Incoming Messages</span>
+                <button type="button" class="btn-primary" id="clearMessagesBtn">Clear Messages</button>
+              </div>
+              <div class="card-body">
+                <div class="filters">
+                  <div class="form-group filter-input">
+                    <input type="text" id="messageFilter" placeholder="Filter messages...">
+                  </div>
+                  <button type="button" class="btn-primary" id="applyFilterBtn">Apply Filter</button>
+                </div>
+                <div class="messages-container" id="messagesContainer">
+                </div>
+                <div class="stats">
+                  <span id="messageCount">Total messages: 0</span>
+                  <span id="messageRate">Message rate: 0/sec</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Other tab panes can go here -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const loginScreen = document.getElementById('loginScreen');
+      const dashboard = document.getElementById('dashboard');
+      const loginBtn = document.getElementById('loginBtn');
+      const logoutBtn = document.getElementById('logoutBtn');
+      const pinInput = document.getElementById('pinInput');
+      const errorMsg = document.getElementById('errorMsg');
+
+      // Hardcoded PIN
+      const correctPIN = "2424";
+      
+      // Check if user is already logged in with valid session
+      function checkLoginStatus() {
+        const loginData = localStorage.getItem('natsLoginData');
+        if (loginData) {
+          const { timestamp, pin } = JSON.parse(loginData);
+          const now = new Date().getTime();
+          const oneDayInMs = 24 * 60 * 60 * 1000; // One day in milliseconds
+          
+          // Check if login is still valid (within 24 hours)
+          if (now - timestamp < oneDayInMs && pin === correctPIN) {
+            loginScreen.style.display = "none";
+            dashboard.style.display = "block";
+            return true;
+          } else {
+            // Remove expired login data
+            localStorage.removeItem('natsLoginData');
+          }
+        }
+        return false;
+      }
+      
+      // Save login status to localStorage
+      function saveLoginStatus() {
+        const loginData = {
+          timestamp: new Date().getTime(),
+          pin: correctPIN
+        };
+        localStorage.setItem('natsLoginData', JSON.stringify(loginData));
+      }
+      
+      // Clear login status from localStorage
+      function clearLoginStatus() {
+        localStorage.removeItem('natsLoginData');
+      }
+      
+      // Check login status on page load
+      const isLoggedIn = checkLoginStatus();
+
+      // Login
+      loginBtn.addEventListener('click', function () {
+        const enteredPIN = pinInput.value.trim();
+        if (enteredPIN === correctPIN) {
+          loginScreen.style.display = "none";
+          dashboard.style.display = "block";
+          pinInput.value = "";
+          errorMsg.textContent = "";
+          // Save login status
+          saveLoginStatus();
+        } else {
+          errorMsg.textContent = "Incorrect PIN. Try again.";
+        }
+      });
+
+      // Logout
+      logoutBtn.addEventListener('click', function () {
+        dashboard.style.display = "none";
+        loginScreen.style.display = "flex";
+        // Clear login status
+        clearLoginStatus();
+      });
+
+      // === Your existing dashboard JS goes below ===
+      const connectionForm = document.getElementById('connectionForm');
+      const connectBtn = document.getElementById('connectBtn');
+      const disconnectBtn = document.getElementById('disconnectBtn');
+      const connectionStatus = document.getElementById('connectionStatus');
+      const messagesContainer = document.getElementById('messagesContainer');
+      const clearMessagesBtn = document.getElementById('clearMessagesBtn');
+      const messageFilter = document.getElementById('messageFilter');
+      const applyFilterBtn = document.getElementById('applyFilterBtn');
+      const messageCount = document.getElementById('messageCount');
+      const messageRate = document.getElementById('messageRate');
+      const tabs = document.querySelectorAll('.tab');
+      const tabPanes = document.querySelectorAll('.tab-pane');
+      
+      let messageCounter = 0;
+      let messages = [];
+      let filteredMessages = [];
+      let messageRateInterval = null;
+      let webSocket = null;
+
+      function initMessageRateCalculator() {
+        if (messageRateInterval) clearInterval(messageRateInterval);
+        messageRateInterval = setInterval(() => {
+          const now = Date.now();
+          const recentMessages = messages.filter(msg => now - msg.timestamp < 1000);
+          messageRate.textContent = `Message rate: ${recentMessages.length}/sec`;
+        }, 1000);
+      }
+
+      function updateConnectionStatus(connected) {
+        if (connected) {
+          connectionStatus.textContent = 'Connected';
+          connectionStatus.className = 'connection-status status-connected';
+          connectBtn.disabled = true;
+          disconnectBtn.disabled = false;
+        } else {
+          connectionStatus.textContent = 'Disconnected';
+          connectionStatus.className = 'connection-status status-disconnected';
+          connectBtn.disabled = false;
+          disconnectBtn.disabled = true;
+        }
+      }
+
+      function addMessageToUI(subject, data, timestamp) {
+        const messageElement = document.createElement('div');
+        messageElement.className = 'message';
+        messageElement.innerHTML = `
+          <span class="message-time">${new Date(timestamp).toLocaleTimeString()}</span>
+          <span class="message-subject">${subject}:</span> 
+          <span class="message-data">${typeof data === 'string' ? data : JSON.stringify(data)}</span>
+        `;
+        messagesContainer.prepend(messageElement);
+        messageCounter++;
+        messageCount.textContent = `Total messages: ${messageCounter}`;
+      }
+
+      function clearMessages() {
+        messages = [];
+        filteredMessages = [];
+        messageCounter = 0;
+        messagesContainer.innerHTML = '<div class="message">No messages received yet. Connect to NATS to start receiving messages.</div>';
+        messageCount.textContent = 'Total messages: 0';
+        messageRate.textContent = 'Message rate: 0/sec';
+      }
+
+      async function connectToNats(serverUrl, credsFile, subjectFilter) {
+        try {
+          const formData = new FormData();
+          formData.append('serverUrl', serverUrl);
+          formData.append('subjectFilter', subjectFilter);
+          formData.append('credsFile', credsFile);
+
+          const response = await fetch('/api/nats/connect', { method: 'POST', body: formData });
+          if (!response.ok) throw new Error('Failed to connect to NATS server');
+          setupWebSocketConnection();
+          updateConnectionStatus(true);
+          return true;
+        } catch (error) {
+          console.error('Connection error:', error);
+          alert('Failed to connect: ' + error.message);
+          return false;
+        }
+      }
+
+      function setupWebSocketConnection() {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}`;
+        webSocket = new WebSocket(wsUrl);
+
+        webSocket.onmessage = function(event) {
+          try {
+            const messageData = JSON.parse(event.data);
+            if (messageData.type === 'nats_message') {
+              messages.unshift({
+                subject: messageData.subject,
+                data: messageData.data,
+                timestamp: messageData.timestamp
+              });
+              const filterText = messageFilter.value.toLowerCase();
+              if (!filterText ||
+                  messageData.subject.toLowerCase().includes(filterText) ||
+                  messageData.data.toLowerCase().includes(filterText)) {
+                addMessageToUI(messageData.subject, messageData.data, messageData.timestamp);
+              }
+            }
+          } catch (error) {
+            console.error('Error processing WebSocket message:', error);
+          }
+        };
+      }
+
+      async function disconnectFromNats() {
+        try {
+          if (webSocket && webSocket.readyState === WebSocket.OPEN) webSocket.close();
+          await fetch('/api/nats/disconnect', { method: 'POST' });
+          if (messageRateInterval) clearInterval(messageRateInterval);
+          updateConnectionStatus(false);
+        } catch (error) {
+          console.error('Disconnection error:', error);
+        }
+      }
+
+      connectionForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const serverUrl = document.getElementById('serverUrl').value;
+        const credsFile = document.getElementById('credsFile').value;
+        const subjectFilter = document.getElementById('subjectFilter').value;
+        await connectToNats(serverUrl, credsFile, subjectFilter);
+      });
+
+      disconnectBtn.addEventListener('click', async function() {
+        await disconnectFromNats();
+      });
+
+      clearMessagesBtn.addEventListener('click', function() {
+        clearMessages();
+      });
+
+      applyFilterBtn.addEventListener('click', function() {
+        const filterText = messageFilter.value.toLowerCase();
+        messagesContainer.innerHTML = '';
+        filteredMessages = filterText ?
+          messages.filter(msg =>
+            msg.subject.toLowerCase().includes(filterText) ||
+            JSON.stringify(msg.data).toLowerCase().includes(filterText)
+          ) : messages;
+        if (filteredMessages.length === 0) {
+          messagesContainer.innerHTML = '<div class="message">No messages match the filter.</div>';
+          return;
+        }
+        filteredMessages.forEach(msg => addMessageToUI(msg.subject, msg.data, msg.timestamp));
+      });
+
+      tabs.forEach(tab => {
+        tab.addEventListener('click', function() {
+          const tabName = this.getAttribute('data-tab');
+          tabs.forEach(t => t.classList.remove('active'));
+          this.classList.add('active');
+          tabPanes.forEach(pane => {
+            pane.classList.remove('active');
+            if (pane.id === `${tabName}-tab`) pane.classList.add('active');
+          });
+        });
+      });
+
+      initMessageRateCalculator();
+    });
+  </script>
+</body>
+</html>
