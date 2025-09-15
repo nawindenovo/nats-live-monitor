@@ -3,7 +3,7 @@ import path from "path";
 import fs from "fs";
 import { connect, StringCodec, credsAuthenticator } from "nats";
 import multer from "multer";
-import { WebSocketServer } from "ws";
+import { WebSocketServer, WebSocket } from "ws";
 import Redis from "ioredis";
 import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
@@ -97,8 +97,6 @@ app.get("/get-data", async (req, res) => {
 app.post("/api/nats/connect", async (req, res) => {
   try {
       console.log("Content-Type:", req.headers["content-type"]);
-
-    console.log("request body", req.body);
     const { serverUrl, subjectFilter, credsFile } = req.body;
     if (nc) { await nc.close(); nc = null; subscriptions = []; }
     const options = { servers: serverUrl };
