@@ -1,0 +1,32 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Viewer - Redis Live Viewer</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <header class="header">
+      <div class="container header-inner">
+        <h2>Redis Live Viewer</h2>
+        <div class="header-actions">
+          <input id="search" placeholder="Filter patterns or keys..." />
+          <button id="logoutBtn">Logout</button>
+        </div>
+      </div>
+    </header>
+    <main class="container main-grid">
+      <aside class="panel">
+        <h3>Allowed Patterns</h3>
+        <div id="patterns" class="pattern-list"></div>
+      </aside>
+      <section class="panel">
+        <h3 id="panelTitle">Data</h3>
+        <div id="dataInfo" class="muted small">Click a pattern to load data</div>
+        <div id="dataList" class="data-list"></div>
+      </section>
+    </main>
+    <script src="/viewer.js"></script>
+  </body>
+</html>

@@ -1,0 +1,29 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Login - Redis Live Viewer</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="container">
+      <div class="card login-card">
+        <h1>Redis Live Viewer</h1>
+        <p class="muted">Sign in with your Access Key</p>
+        <label>Access Key
+          <input id="accessKey" placeholder="access-key" value="public-client" />
+        </label>
+        <label>Secret
+          <input id="secret" type="password" placeholder="secret" value="pass123" />
+        </label>
+        <div class="row">
+          <button id="loginBtn">Login</button>
+        </div>
+        <div id="loginError" class="error"></div>
+        <p class="muted small">Use the credentials in <code>.env</code></p>
+      </div>
+    </main>
+    <script src="/login.js"></script>
+  </body>
+</html>
