@@ -1,0 +1,1027 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+  <meta charset="UTF-8" />
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0" />
+
+  <title>API Parity Checker</title>
+
+  <style>
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+
+      margin: 0;
+
+      padding: 20px;
+
+      font-family: Arial, sans-serif;
+
+      background:
+        linear-gradient(
+          135deg,
+          #020617,
+          #0f172a,
+          #111827
+        );
+
+      color: white;
+    }
+
+    h1 {
+
+      margin-top: 0;
+
+      font-size: 34px;
+
+      background:
+        linear-gradient(
+          90deg,
+          #38bdf8,
+          #818cf8,
+          #c084fc
+        );
+
+      -webkit-background-clip: text;
+
+      -webkit-text-fill-color: transparent;
+    }
+
+    .top-panel {
+
+      margin-top: 25px;
+
+      margin-bottom: 25px;
+
+      display: flex;
+
+      flex-wrap: wrap;
+
+      gap: 20px;
+
+      padding: 22px;
+
+      border-radius: 18px;
+
+      background:
+        rgba(255,255,255,0.08);
+
+      backdrop-filter: blur(12px);
+
+      border:
+        1px solid rgba(255,255,255,0.1);
+    }
+
+    .field {
+
+      display: flex;
+
+      flex-direction: column;
+    }
+
+    label {
+
+      margin-bottom: 8px;
+
+      font-size: 13px;
+
+      color: #cbd5e1;
+
+      font-weight: bold;
+    }
+
+    input,
+    select {
+
+      width: 250px;
+
+      padding: 12px;
+
+      border-radius: 12px;
+
+      border: none;
+
+      outline: none;
+
+      background: #1e293b;
+
+      color: white;
+
+      font-size: 14px;
+    }
+
+    input:focus,
+    select:focus {
+
+      border:
+        2px solid #38bdf8;
+    }
+
+    .run-btn {
+
+      height: 48px;
+
+      padding: 0 28px;
+
+      border: none;
+
+      border-radius: 12px;
+
+      cursor: pointer;
+
+      font-size: 15px;
+
+      font-weight: bold;
+
+      color: white;
+
+      background:
+        linear-gradient(
+          90deg,
+          #06b6d4,
+          #3b82f6,
+          #8b5cf6
+        );
+
+      transition: 0.2s;
+    }
+
+    .run-btn:hover {
+
+      transform: scale(1.03);
+
+      opacity: 0.95;
+    }
+
+    .status {
+
+      margin-bottom: 20px;
+
+      padding: 16px;
+
+      border-radius: 14px;
+
+      font-size: 20px;
+
+      font-weight: bold;
+    }
+
+    .pass {
+
+      background:
+        rgba(34,197,94,0.15);
+
+      border:
+        1px solid #22c55e;
+
+      color: #4ade80;
+    }
+
+    .fail {
+
+      background:
+        rgba(239,68,68,0.15);
+
+      border:
+        1px solid #ef4444;
+
+      color: #f87171;
+    }
+
+    .running {
+
+      background:
+        rgba(59,130,246,0.15);
+
+      border:
+        1px solid #3b82f6;
+
+      color: #93c5fd;
+    }
+
+    .summary {
+
+      margin-bottom: 20px;
+    }
+
+    .summary-card {
+
+      padding: 16px;
+
+      margin-bottom: 12px;
+
+      border-radius: 14px;
+
+      background:
+        rgba(239,68,68,0.12);
+
+      border-left:
+        5px solid #ef4444;
+    }
+
+    .summary-card b {
+
+      color: #fca5a5;
+    }
+
+    .container {
+
+      display: flex;
+
+      gap: 20px;
+    }
+
+    .panel {
+
+      width: 50%;
+
+      background:
+        rgba(255,255,255,0.07);
+
+      border-radius: 18px;
+
+      padding: 18px;
+
+      border:
+        1px solid rgba(255,255,255,0.1);
+
+      backdrop-filter: blur(8px);
+    }
+
+    .panel-header {
+
+      display: flex;
+
+      justify-content: space-between;
+
+      align-items: center;
+
+      margin-bottom: 15px;
+    }
+
+    .panel-header h2 {
+
+      margin: 0;
+
+      font-size: 18px;
+
+      color: #e2e8f0;
+    }
+
+    .duration {
+
+      margin-top: 6px;
+
+      color: #94a3b8;
+
+      font-size: 13px;
+    }
+
+    .copy-btn {
+
+      border: none;
+
+      cursor: pointer;
+
+      padding: 10px 16px;
+
+      border-radius: 10px;
+
+      color: white;
+
+      font-weight: bold;
+
+      background:
+        linear-gradient(
+          90deg,
+          #0ea5e9,
+          #6366f1
+        );
+
+      transition: 0.2s;
+    }
+
+    .copy-btn:hover {
+
+      transform: scale(1.05);
+    }
+
+    pre {
+
+      margin: 0;
+
+      height: 700px;
+
+      overflow: auto;
+
+      padding: 20px;
+
+      border-radius: 14px;
+
+      background: #020617;
+
+      color: #e2e8f0;
+
+      border:
+        1px solid #334155;
+
+      font-size: 13px;
+
+      line-height: 1.6;
+    }
+
+    .footer {
+
+      margin-top: 25px;
+
+      text-align: center;
+
+      color: #94a3b8;
+
+      font-size: 13px;
+    }
+
+  </style>
+
+</head>
+
+<body>
+
+  <h1>🚀 API Parity Checker</h1>
+
+  <div class="top-panel">
+
+    <div class="field">
+
+      <label>Environment</label>
+
+      <select id="environment">
+
+        <option value="dev">DEV</option>
+
+        <option value="qa">QA</option>
+
+        <option value="uat">UAT</option>
+
+        <option value="preprod">PREPROD</option>
+
+        <option value="prod">PROD</option>
+
+      </select>
+
+    </div>
+
+    <div class="field">
+
+      <label>TPN</label>
+
+      <input
+        id="tpn"
+        placeholder="Enter TPN" />
+
+    </div>
+
+    <div class="field">
+
+      <label>API KEY (Optional)</label>
+
+      <input
+        id="apiKey"
+        placeholder="Leave empty for default key" />
+
+    </div>
+
+    <button
+      class="run-btn"
+      onclick="runParityCheck()">
+
+      Run Parity Test
+
+    </button>
+
+  </div>
+
+  <div
+    id="status"
+    class="status">
+
+  </div>
+
+  <div
+    id="summary"
+    class="summary">
+
+  </div>
+
+  <div class="container">
+
+    <div class="panel">
+
+      <div class="panel-header">
+
+        <div>
+
+          <h2>🧾 OLD API RESPONSE</h2>
+
+          <div
+            id="oldDuration"
+            class="duration">
+
+          </div>
+
+        </div>
+
+        <button
+          class="copy-btn"
+          onclick="copyResponse('oldResponse', this)">
+
+          Copy JSON
+
+        </button>
+
+      </div>
+
+      <pre id="oldResponse"></pre>
+
+    </div>
+
+    <div class="panel">
+
+      <div class="panel-header">
+
+        <div>
+
+          <h2>✨ NEW API RESPONSE</h2>
+
+          <div
+            id="newDuration"
+            class="duration">
+
+          </div>
+
+        </div>
+
+        <button
+          class="copy-btn"
+          onclick="copyResponse('newResponse', this)">
+
+          Copy JSON
+
+        </button>
+
+      </div>
+
+      <pre id="newResponse"></pre>
+
+    </div>
+
+  </div>
+
+  <div class="footer">
+
+    Strict parity validation •
+    Type safe •
+    Decimal safe •
+    Null safe •
+    Order independent
+
+  </div>
+
+<script>
+
+let DEFAULT_API_KEY = '';
+
+const ENVIRONMENTS = {
+
+  dev:
+  'https://api.denovosystem.tech',
+
+  qa:
+  'https://api.ipospays.tech',
+
+  uat:
+  'https://api.ipospays.tech',
+
+  preprod:
+  'https://papi.ipospays.tech',
+
+  prod:
+  'https://prod-api.yourdomain.com'
+};
+
+const envSelect =
+document.getElementById('environment');
+
+const tpnInput =
+document.getElementById('tpn');
+
+const apiKeyInput =
+document.getElementById('apiKey');
+
+window.onload = async () => {
+
+  try {
+
+    const res =
+      await fetch(
+        '/api/parity/default-api-key'
+      );
+
+    if (res.ok) {
+
+      const body =
+        await res.json();
+
+      DEFAULT_API_KEY =
+        body.defaultApiKey || '';
+    }
+  } catch (e) {
+
+    console.warn(
+      'Could not load default API key from server',
+      e
+    );
+  }
+
+  const lastEnv =
+    localStorage.getItem('parity_env');
+
+  const lastTpn =
+    localStorage.getItem('parity_tpn');
+
+  const lastApiKey =
+    localStorage.getItem('parity_api_key');
+
+  if (lastEnv) {
+    envSelect.value = lastEnv;
+  }
+
+  if (lastTpn) {
+    tpnInput.value = lastTpn;
+  }
+
+  if (lastApiKey) {
+    apiKeyInput.value = lastApiKey;
+  }
+};
+
+envSelect.addEventListener(
+  'change',
+  saveInputs
+);
+
+tpnInput.addEventListener(
+  'input',
+  saveInputs
+);
+
+apiKeyInput.addEventListener(
+  'input',
+  saveInputs
+);
+
+function saveInputs() {
+
+  localStorage.setItem(
+    'parity_env',
+    envSelect.value
+  );
+
+  localStorage.setItem(
+    'parity_tpn',
+    tpnInput.value
+  );
+
+  localStorage.setItem(
+    'parity_api_key',
+    apiKeyInput.value
+  );
+}
+
+function deepSort(obj) {
+
+  if (Array.isArray(obj)) {
+
+    return obj.map(deepSort);
+  }
+
+  if (
+    obj !== null &&
+    typeof obj === 'object'
+  ) {
+
+    return Object.keys(obj)
+      .sort()
+      .reduce((r, k) => {
+
+        r[k] = deepSort(obj[k]);
+
+        return r;
+
+      }, {});
+  }
+
+  return obj;
+}
+
+function strictEqual(a, b) {
+
+  if (typeof a !== typeof b) {
+    return false;
+  }
+
+  if (a === null || b === null) {
+    return a === b;
+  }
+
+  if (Array.isArray(a)) {
+
+    if (!Array.isArray(b)) {
+      return false;
+    }
+
+    if (a.length !== b.length) {
+      return false;
+    }
+
+    for (let i = 0; i < a.length; i++) {
+
+      if (!strictEqual(a[i], b[i])) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  if (typeof a === 'object') {
+
+    const keysA =
+      Object.keys(a).sort();
+
+    const keysB =
+      Object.keys(b).sort();
+
+    if (!strictEqual(keysA, keysB)) {
+      return false;
+    }
+
+    for (const key of keysA) {
+
+      if (!strictEqual(a[key], b[key])) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  return Object.is(a, b);
+}
+
+function findDifferences(
+  oldObj,
+  newObj,
+  path = ''
+) {
+
+  const diffs = [];
+
+  const allKeys = new Set([
+    ...Object.keys(oldObj || {}),
+    ...Object.keys(newObj || {})
+  ]);
+
+  for (const key of allKeys) {
+
+    const currentPath =
+      path ? `${path}.${key}` : key;
+
+    const oldValue = oldObj?.[key];
+    const newValue = newObj?.[key];
+
+    if (!(key in (oldObj || {}))) {
+
+      diffs.push({
+        type: 'MISSING_IN_OLD',
+        path: currentPath,
+        oldValue: undefined,
+        newValue
+      });
+
+      continue;
+    }
+
+    if (!(key in (newObj || {}))) {
+
+      diffs.push({
+        type: 'MISSING_IN_NEW',
+        path: currentPath,
+        oldValue,
+        newValue: undefined
+      });
+
+      continue;
+    }
+
+    if (
+      typeof oldValue !==
+      typeof newValue
+    ) {
+
+      diffs.push({
+        type: 'TYPE_MISMATCH',
+        path: currentPath,
+        oldValue,
+        newValue
+      });
+
+      continue;
+    }
+
+    if (
+      oldValue !== null &&
+      newValue !== null &&
+      typeof oldValue === 'object'
+    ) {
+
+      diffs.push(
+        ...findDifferences(
+          oldValue,
+          newValue,
+          currentPath
+        )
+      );
+
+      continue;
+    }
+
+    if (
+      !strictEqual(oldValue, newValue)
+    ) {
+
+      diffs.push({
+        type: 'VALUE_MISMATCH',
+        path: currentPath,
+        oldValue,
+        newValue
+      });
+    }
+  }
+
+  return diffs;
+}
+
+function copyResponse(id, button) {
+
+  const text =
+    document.getElementById(id)
+    .textContent;
+
+  // Modern clipboard API
+
+  if (
+    navigator.clipboard &&
+    window.isSecureContext
+  ) {
+
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+
+        showCopied(button);
+      });
+
+    return;
+  }
+
+  // Fallback for HTTP
+
+  const textArea =
+    document.createElement('textarea');
+
+  textArea.value = text;
+
+  textArea.style.position = 'fixed';
+
+  textArea.style.left = '-999999px';
+
+  document.body.appendChild(textArea);
+
+  textArea.focus();
+
+  textArea.select();
+
+  try {
+
+    document.execCommand('copy');
+
+    showCopied(button);
+
+  } catch (err) {
+
+    console.error(err);
+
+    alert('Copy failed');
+  }
+
+  document.body.removeChild(textArea);
+}
+
+function showCopied(button) {
+
+  const original =
+    button.innerHTML;
+
+  button.innerHTML =
+    '✅ Copied';
+
+  button.style.background =
+    'linear-gradient(90deg,#16a34a,#22c55e)';
+
+  setTimeout(() => {
+
+    button.innerHTML =
+      original;
+
+    button.style.background =
+      'linear-gradient(90deg,#0ea5e9,#6366f1)';
+
+  }, 1500);
+}
+
+async function runParityCheck() {
+
+  const status =
+    document.getElementById('status');
+
+  const summary =
+    document.getElementById('summary');
+
+  const oldResponse =
+    document.getElementById('oldResponse');
+
+  const newResponse =
+    document.getElementById('newResponse');
+
+  summary.innerHTML = '';
+
+  const env =
+    envSelect.value;
+
+  const tpn =
+    tpnInput.value.trim();
+
+  const apiKey =
+    apiKeyInput.value.trim()
+    || DEFAULT_API_KEY;
+
+  if (!tpn) {
+
+    alert('TPN is required');
+
+    return;
+  }
+
+  if (!apiKey) {
+
+    alert(
+      'API key is required. Set PARITY_DEFAULT_API_KEY on the server or paste a key.'
+    );
+
+    return;
+  }
+
+  const baseUrl =
+    ENVIRONMENTS[env];
+
+  const OLD_API =
+    `${baseUrl}/v1/open-batch-test-old/${tpn}`;
+
+  const NEW_API =
+    `${baseUrl}/v1/open-batch-test-new/${tpn}`;
+
+  try {
+
+    status.innerHTML =
+      '⏳ Running parity check...';
+
+    status.className =
+      'status running';
+
+    const headers = {
+      Authorization: apiKey
+    };
+
+    const oldStart =
+      performance.now();
+
+    const oldRes =
+      await fetch(OLD_API, { headers });
+
+    const oldEnd =
+      performance.now();
+
+    const newStart =
+      performance.now();
+
+    const newRes =
+      await fetch(NEW_API, { headers });
+
+    const newEnd =
+      performance.now();
+
+    document.getElementById(
+      'oldDuration'
+    ).innerHTML =
+      `⏱ ${(oldEnd - oldStart).toFixed(2)} ms`;
+
+    document.getElementById(
+      'newDuration'
+    ).innerHTML =
+      `⏱ ${(newEnd - newStart).toFixed(2)} ms`;
+
+    const oldData =
+      deepSort(await oldRes.json());
+
+    const newData =
+      deepSort(await newRes.json());
+
+    oldResponse.textContent =
+      JSON.stringify(oldData, null, 2);
+
+    newResponse.textContent =
+      JSON.stringify(newData, null, 2);
+
+    const diffs =
+      findDifferences(
+        oldData,
+        newData
+      );
+
+    if (diffs.length === 0) {
+
+      status.innerHTML =
+        '✅ PERFECT PARITY MATCH';
+
+      status.className =
+        'status pass';
+
+    } else {
+
+      status.innerHTML =
+        `❌ ${diffs.length} DIFFERENCES FOUND`;
+
+      status.className =
+        'status fail';
+
+      let html = '';
+
+      diffs.forEach((d, i) => {
+
+        html += `
+          <div class="summary-card">
+
+            <b>#${i + 1}</b><br><br>
+
+            <b>Type:</b>
+            ${d.type}<br><br>
+
+            <b>Path:</b>
+            ${d.path}<br><br>
+
+            <b>Old:</b>
+            ${JSON.stringify(d.oldValue)}<br><br>
+
+            <b>New:</b>
+            ${JSON.stringify(d.newValue)}
+
+          </div>
+        `;
+      });
+
+      summary.innerHTML = html;
+    }
+
+  } catch (err) {
+
+    status.innerHTML =
+      '❌ ERROR : ' + err.message;
+
+    status.className =
+      'status fail';
+  }
+}
+
+</script>
+
+</body>
+</html>

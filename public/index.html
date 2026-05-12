@@ -157,10 +157,17 @@
       overflow-y: auto;
       border: 1px solid #ddd;
       border-radius: 4px;
-      padding: 10px;
+      padding: 0;
       background-color: #fafafa;
       font-family: monospace;
       font-size: 14px;
+      position: relative;
+    }
+
+    #virtualContent {
+      position: relative;
+      padding: 8px 10px 10px;
+      box-sizing: content-box;
     }
 
     .message {
@@ -168,8 +175,100 @@
       border-bottom: 1px solid #eee;
     }
 
+    .message-row {
+      position: absolute;
+      left: 10px;
+      right: 10px;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      border-bottom: 1px solid #eee;
+      line-height: 1.35;
+    }
+
+    .message-row:hover {
+      background-color: #f0f0f0;
+    }
+
     .message:hover {
       background-color: #f0f0f0;
+    }
+
+    .card-header-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .btn-secondary {
+      background-color: var(--dark-color);
+      color: white;
+    }
+
+    .btn-secondary:hover {
+      background-color: #2c3e50;
+    }
+
+    .btn-secondary:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    #exportModal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.45);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    #exportModal.open {
+      display: flex;
+    }
+
+    .export-dialog {
+      background: white;
+      border-radius: 8px;
+      padding: 24px;
+      max-width: 420px;
+      width: 100%;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    }
+
+    .export-dialog h3 {
+      margin-bottom: 12px;
+      font-size: 1.1rem;
+    }
+
+    .export-progress-track {
+      height: 10px;
+      background: #ecf0f1;
+      border-radius: 5px;
+      overflow: hidden;
+      margin: 16px 0;
+    }
+
+    .export-progress-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--secondary-color);
+      transition: width 0.15s ease;
+    }
+
+    .export-status {
+      font-size: 14px;
+      color: #555;
+      margin-bottom: 16px;
+    }
+
+    .export-dialog-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
     }
 
     .message-subject {
@@ -339,7 +438,10 @@
             <div class="card">
               <div class="card-header">
                 <span>Incoming Messages</span>
-                <button type="button" class="btn-primary" id="clearMessagesBtn">Clear Messages</button>
+                <div class="card-header-actions">
+                  <button type="button" class="btn-secondary" id="downloadCsvBtn" disabled>Download CSV</button>
+                  <button type="button" class="btn-primary" id="clearMessagesBtn">Clear Messages</button>
+                </div>
               </div>
               <div class="card-body">
                 <div class="filters">
@@ -349,16 +451,33 @@
                   <button type="button" class="btn-primary" id="applyFilterBtn">Apply Filter</button>
                 </div>
                 <div class="messages-container" id="messagesContainer">
+                  <div id="virtualContent"></div>
                 </div>
                 <div class="stats">
                   <span id="messageCount">Total messages: 0</span>
                   <span id="messageRate">Message rate: 0/sec</span>
+                </div>
+                <div class="stats" style="margin-top: 4px;">
+                  <span id="messageViewInfo">Showing: 0 rows (max 40,000 stored)</span>
                 </div>
               </div>
             </div>
           </div>
           <!-- Other tab panes can go here -->
         </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="exportModal" aria-hidden="true">
+    <div class="export-dialog">
+      <h3>Exporting CSV</h3>
+      <div class="export-status" id="exportStatus">Preparing…</div>
+      <div class="export-progress-track">
+        <div class="export-progress-fill" id="exportProgressFill"></div>
+      </div>
+      <div class="export-dialog-actions">
+        <button type="button" class="btn-danger" id="exportCancelBtn">Cancel</button>
       </div>
     </div>
   </div>
@@ -436,31 +555,112 @@
         clearLoginStatus();
       });
 
-      // === Your existing dashboard JS goes below ===
+      // === Dashboard: virtual list (up to 40k), CSV export with progress ===
       const connectionForm = document.getElementById('connectionForm');
       const connectBtn = document.getElementById('connectBtn');
       const disconnectBtn = document.getElementById('disconnectBtn');
       const connectionStatus = document.getElementById('connectionStatus');
       const messagesContainer = document.getElementById('messagesContainer');
+      const virtualContent = document.getElementById('virtualContent');
       const clearMessagesBtn = document.getElementById('clearMessagesBtn');
+      const downloadCsvBtn = document.getElementById('downloadCsvBtn');
       const messageFilter = document.getElementById('messageFilter');
       const applyFilterBtn = document.getElementById('applyFilterBtn');
       const messageCount = document.getElementById('messageCount');
       const messageRate = document.getElementById('messageRate');
+      const messageViewInfo = document.getElementById('messageViewInfo');
+      const exportModal = document.getElementById('exportModal');
+      const exportStatus = document.getElementById('exportStatus');
+      const exportProgressFill = document.getElementById('exportProgressFill');
+      const exportCancelBtn = document.getElementById('exportCancelBtn');
       const tabs = document.querySelectorAll('.tab');
       const tabPanes = document.querySelectorAll('.tab-pane');
-      
-      let messageCounter = 0;
+
+      const MAX_MESSAGES = 40000;
+      const ROW_HEIGHT = 36;
+      const VIRTUAL_BUFFER = 10;
+      const CSV_BATCH = 400;
+      const KEY_SCAN_BATCH = 500;
+
       let messages = [];
       let filteredMessages = [];
+      let viewIsFiltered = false;
       let messageRateInterval = null;
       let webSocket = null;
+      let virtualScrollScheduled = false;
+      let exportCancelled = false;
+      let exportRunning = false;
+
+      function getList() {
+        return viewIsFiltered ? filteredMessages : messages;
+      }
+
+      function formatTimeHHMMSS(ts) {
+        const d = new Date(ts);
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+      }
+
+      function parseSubjectParts(subject) {
+        const s = String(subject);
+        const m = s.match(/^tcp\.status\.(.+)$/);
+        return { tcpStatus: 'tcp.status', tpn: m ? m[1] : '' };
+      }
+
+      function flattenJson(obj, prefix, out) {
+        if (obj === null || obj === undefined) {
+          out[prefix || 'value'] = '';
+          return out;
+        }
+        if (typeof obj !== 'object') {
+          out[prefix || 'value'] = obj;
+          return out;
+        }
+        if (Array.isArray(obj)) {
+          out[prefix || 'value'] = JSON.stringify(obj);
+          return out;
+        }
+        for (const [k, v] of Object.entries(obj)) {
+          const key = prefix ? `${prefix}_${k}` : k;
+          if (v !== null && typeof v === 'object' && !Array.isArray(v)) flattenJson(v, key, out);
+          else if (Array.isArray(v)) out[key] = JSON.stringify(v);
+          else out[key] = v === undefined ? '' : v;
+        }
+        return out;
+      }
+
+      function flattenPayload(dataStr) {
+        const raw = typeof dataStr === 'string' ? dataStr : JSON.stringify(dataStr);
+        try {
+          const o = JSON.parse(raw);
+          if (typeof o === 'object' && o !== null && !Array.isArray(o)) return flattenJson(o, '', {});
+        } catch (e) { /* ignore */ }
+        return { raw_data: raw };
+      }
+
+      function csvEscape(val) {
+        const s = val == null ? '' : String(val);
+        if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+        return s;
+      }
+
+      function yieldToMain() {
+        return new Promise((r) => setTimeout(r, 0));
+      }
+
+      function updateStats() {
+        const list = getList();
+        const capNote = messages.length >= MAX_MESSAGES ? ' (buffer full)' : '';
+        messageCount.textContent = `Total stored: ${messages.length}${capNote}`;
+        messageViewInfo.textContent = `Showing: ${list.length} row(s) (max ${MAX_MESSAGES.toLocaleString()} stored)`;
+        downloadCsvBtn.disabled = list.length === 0 || exportRunning;
+      }
 
       function initMessageRateCalculator() {
         if (messageRateInterval) clearInterval(messageRateInterval);
         messageRateInterval = setInterval(() => {
           const now = Date.now();
-          const recentMessages = messages.filter(msg => now - msg.timestamp < 1000);
+          const recentMessages = messages.filter((msg) => now - msg.timestamp < 1000);
           messageRate.textContent = `Message rate: ${recentMessages.length}/sec`;
         }, 1000);
       }
@@ -479,25 +679,94 @@
         }
       }
 
-      function addMessageToUI(subject, data, timestamp) {
-        const messageElement = document.createElement('div');
-        messageElement.className = 'message';
-        messageElement.innerHTML = `
-          <span class="message-time">${new Date(timestamp).toLocaleTimeString()}</span>
-          <span class="message-subject">${subject}:</span> 
-          <span class="message-data">${typeof data === 'string' ? data : JSON.stringify(data)}</span>
-        `;
-        messagesContainer.prepend(messageElement);
-        messageCounter++;
-        messageCount.textContent = `Total messages: ${messageCounter}`;
+      function buildRowElement(msg, index) {
+        const el = document.createElement('div');
+        el.className = 'message message-row';
+        el.style.top = `${index * ROW_HEIGHT}px`;
+        el.style.height = `${ROW_HEIGHT}px`;
+        const time = document.createElement('span');
+        time.className = 'message-time';
+        time.textContent = formatTimeHHMMSS(msg.timestamp);
+        const subj = document.createElement('span');
+        subj.className = 'message-subject';
+        subj.textContent = `${msg.subject}:`;
+        const dataEl = document.createElement('span');
+        dataEl.className = 'message-data';
+        const dataStr = typeof msg.data === 'string' ? msg.data : JSON.stringify(msg.data);
+        dataEl.textContent = dataStr;
+        el.appendChild(time);
+        el.appendChild(subj);
+        el.appendChild(dataEl);
+        el.title = `${time.textContent} ${msg.subject}: ${dataStr}`;
+        return el;
       }
+
+      function renderVirtualList() {
+        const list = getList();
+        const prevScroll = messagesContainer.scrollTop;
+        const totalH = list.length * ROW_HEIGHT;
+
+        virtualContent.style.minHeight = list.length ? `${totalH}px` : '0';
+        virtualContent.innerHTML = '';
+
+        if (list.length === 0) {
+          const empty = document.createElement('div');
+          empty.className = 'message';
+          empty.style.position = 'relative';
+          empty.textContent = viewIsFiltered
+            ? 'No messages match the filter.'
+            : 'No messages received yet. Connect to NATS to start receiving messages.';
+          virtualContent.appendChild(empty);
+          messagesContainer.scrollTop = 0;
+          updateStats();
+          return;
+        }
+
+        const scrollTop = prevScroll;
+        const viewH = messagesContainer.clientHeight;
+
+        let first = Math.floor(scrollTop / ROW_HEIGHT) - VIRTUAL_BUFFER;
+        if (first < 0) first = 0;
+        let last = Math.ceil((scrollTop + viewH) / ROW_HEIGHT) + VIRTUAL_BUFFER;
+        if (last >= list.length) last = list.length - 1;
+
+        const frag = document.createDocumentFragment();
+        for (let i = first; i <= last; i++) {
+          frag.appendChild(buildRowElement(list[i], i));
+        }
+        virtualContent.appendChild(frag);
+
+        requestAnimationFrame(() => {
+          const maxScroll = Math.max(0, messagesContainer.scrollHeight - messagesContainer.clientHeight);
+          messagesContainer.scrollTop = Math.min(prevScroll, maxScroll);
+        });
+
+        updateStats();
+      }
+
+      function scheduleVirtualRender() {
+        if (virtualScrollScheduled) return;
+        virtualScrollScheduled = true;
+        requestAnimationFrame(() => {
+          virtualScrollScheduled = false;
+          renderVirtualList();
+        });
+      }
+
+      messagesContainer.addEventListener('scroll', () => {
+        scheduleVirtualRender();
+      });
+
+      window.addEventListener('resize', () => {
+        scheduleVirtualRender();
+      });
 
       function clearMessages() {
         messages = [];
         filteredMessages = [];
-        messageCounter = 0;
-        messagesContainer.innerHTML = '<div class="message">No messages received yet. Connect to NATS to start receiving messages.</div>';
-        messageCount.textContent = 'Total messages: 0';
+        viewIsFiltered = false;
+        messagesContainer.scrollTop = 0;
+        renderVirtualList();
         messageRate.textContent = 'Message rate: 0/sec';
       }
 
@@ -511,6 +780,7 @@
           const response = await fetch('/api/nats/connect', { method: 'POST', body: formData });
           if (!response.ok) throw new Error('Failed to connect to NATS server');
           setupWebSocketConnection();
+          initMessageRateCalculator();
           updateConnectionStatus(true);
           return true;
         } catch (error) {
@@ -525,7 +795,7 @@
         const wsUrl = `${protocol}//${window.location.host}`;
         webSocket = new WebSocket(wsUrl);
 
-        webSocket.onmessage = function(event) {
+        webSocket.onmessage = function (event) {
           try {
             const messageData = JSON.parse(event.data);
             if (messageData.type === 'nats_message') {
@@ -534,12 +804,11 @@
                 data: messageData.data,
                 timestamp: messageData.timestamp
               });
-              const filterText = messageFilter.value.toLowerCase();
-              if (!filterText ||
-                  messageData.subject.toLowerCase().includes(filterText) ||
-                  messageData.data.toLowerCase().includes(filterText)) {
-                addMessageToUI(messageData.subject, messageData.data, messageData.timestamp);
+              while (messages.length > MAX_MESSAGES) {
+                messages.pop();
               }
+              if (!viewIsFiltered) scheduleVirtualRender();
+              else updateStats();
             }
           } catch (error) {
             console.error('Error processing WebSocket message:', error);
@@ -558,7 +827,98 @@
         }
       }
 
-      connectionForm.addEventListener('submit', async function(e) {
+      function setExportModal(open) {
+        exportModal.classList.toggle('open', open);
+        exportModal.setAttribute('aria-hidden', open ? 'false' : 'true');
+      }
+
+      async function runCsvExport() {
+        const list = getList();
+        if (list.length === 0 || exportRunning) return;
+
+        exportRunning = true;
+        exportCancelled = false;
+        downloadCsvBtn.disabled = true;
+        setExportModal(true);
+        exportProgressFill.style.width = '0%';
+        exportStatus.textContent = 'Scanning keys…';
+
+        const baseKeys = ['time', 'tcp_status', 'tpn'];
+        const allJsonKeys = new Set();
+        const total = list.length;
+
+        try {
+          for (let start = 0; start < total; start += KEY_SCAN_BATCH) {
+            if (exportCancelled) throw new Error('cancelled');
+            const end = Math.min(start + KEY_SCAN_BATCH, total);
+            for (let i = start; i < end; i++) {
+              const flat = flattenPayload(list[i].data);
+              Object.keys(flat).forEach((k) => allJsonKeys.add(k));
+            }
+            const pct = Math.round(((start + (end - start)) / total) * 40);
+            exportProgressFill.style.width = `${pct}%`;
+            exportStatus.textContent = `Scanning keys… ${Math.min(end, total)} / ${total}`;
+            await yieldToMain();
+          }
+
+          const sortedJsonKeys = Array.from(allJsonKeys).sort();
+          const headerCols = baseKeys.concat(sortedJsonKeys);
+          const lines = [headerCols.map(csvEscape).join(',')];
+
+          exportStatus.textContent = 'Building file…';
+
+          for (let start = 0; start < total; start += CSV_BATCH) {
+            if (exportCancelled) throw new Error('cancelled');
+            const end = Math.min(start + CSV_BATCH, total);
+            for (let i = start; i < end; i++) {
+              const msg = list[i];
+              const { tcpStatus, tpn } = parseSubjectParts(msg.subject);
+              const flat = flattenPayload(msg.data);
+              const row = [
+                formatTimeHHMMSS(msg.timestamp),
+                tcpStatus,
+                tpn,
+                ...sortedJsonKeys.map((k) => flat[k] != null ? flat[k] : '')
+              ];
+              lines.push(row.map(csvEscape).join(','));
+            }
+            const pct = 40 + Math.round(((start + (end - start)) / total) * 60);
+            exportProgressFill.style.width = `${Math.min(100, pct)}%`;
+            exportStatus.textContent = `Building rows… ${Math.min(end, total)} / ${total}`;
+            await yieldToMain();
+          }
+
+          const bom = '\uFEFF';
+          const blob = new Blob([bom + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `nats-messages-${Date.now()}.csv`;
+          a.click();
+          URL.revokeObjectURL(url);
+
+          exportProgressFill.style.width = '100%';
+          exportStatus.textContent = 'Done.';
+          await yieldToMain();
+        } catch (e) {
+          if (e && e.message === 'cancelled') exportStatus.textContent = 'Cancelled.';
+          else {
+            console.error(e);
+            exportStatus.textContent = 'Export failed. See console.';
+          }
+        } finally {
+          exportRunning = false;
+          downloadCsvBtn.disabled = getList().length === 0;
+          setTimeout(() => setExportModal(false), exportCancelled ? 400 : 800);
+        }
+      }
+
+      exportCancelBtn.addEventListener('click', () => {
+        exportCancelled = true;
+        exportStatus.textContent = 'Cancelling…';
+      });
+
+      connectionForm.addEventListener('submit', async function (e) {
         e.preventDefault();
         const serverUrl = document.getElementById('serverUrl').value;
         const credsFile = document.getElementById('credsFile').value;
@@ -566,35 +926,43 @@
         await connectToNats(serverUrl, credsFile, subjectFilter);
       });
 
-      disconnectBtn.addEventListener('click', async function() {
+      disconnectBtn.addEventListener('click', async function () {
         await disconnectFromNats();
       });
 
-      clearMessagesBtn.addEventListener('click', function() {
+      clearMessagesBtn.addEventListener('click', function () {
         clearMessages();
       });
 
-      applyFilterBtn.addEventListener('click', function() {
-        const filterText = messageFilter.value.toLowerCase();
-        messagesContainer.innerHTML = '';
-        filteredMessages = filterText ?
-          messages.filter(msg =>
-            msg.subject.toLowerCase().includes(filterText) ||
-            JSON.stringify(msg.data).toLowerCase().includes(filterText)
-          ) : messages;
-        if (filteredMessages.length === 0) {
-          messagesContainer.innerHTML = '<div class="message">No messages match the filter.</div>';
-          return;
-        }
-        filteredMessages.forEach(msg => addMessageToUI(msg.subject, msg.data, msg.timestamp));
+      downloadCsvBtn.addEventListener('click', function () {
+        runCsvExport();
       });
 
-      tabs.forEach(tab => {
-        tab.addEventListener('click', function() {
+      applyFilterBtn.addEventListener('click', function () {
+        const filterText = messageFilter.value.trim().toLowerCase();
+        messagesContainer.scrollTop = 0;
+        if (!filterText) {
+          viewIsFiltered = false;
+          filteredMessages = [];
+        } else {
+          viewIsFiltered = true;
+          filteredMessages = messages.filter(
+            (msg) =>
+              msg.subject.toLowerCase().includes(filterText) ||
+              (typeof msg.data === 'string' ? msg.data : JSON.stringify(msg.data))
+                .toLowerCase()
+                .includes(filterText)
+          );
+        }
+        renderVirtualList();
+      });
+
+      tabs.forEach((tab) => {
+        tab.addEventListener('click', function () {
           const tabName = this.getAttribute('data-tab');
-          tabs.forEach(t => t.classList.remove('active'));
+          tabs.forEach((t) => t.classList.remove('active'));
           this.classList.add('active');
-          tabPanes.forEach(pane => {
+          tabPanes.forEach((pane) => {
             pane.classList.remove('active');
             if (pane.id === `${tabName}-tab`) pane.classList.add('active');
           });
@@ -602,6 +970,7 @@
       });
 
       initMessageRateCalculator();
+      renderVirtualList();
     });
   </script>
 </body>

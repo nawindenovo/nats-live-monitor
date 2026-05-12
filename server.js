@@ -1,20 +1,61 @@
+require('dotenv').config();
+
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const basicAuth = require('express-basic-auth');
 const { connect, StringCodec, credsAuthenticator } = require('nats');
 const multer = require('multer');
 const WebSocket = require('ws');
-const cors = require('cors')
+const cors = require('cors');
 
 const app = express();
 const port = process.env.PORT || 3000;
 
+const parityUser = process.env.PARITY_CHECK_USER;
+const parityPassword = process.env.PARITY_CHECK_PASSWORD;
+const parityAuthEnabled = Boolean(parityUser && parityPassword);
+
+const parityBasicAuth = parityAuthEnabled
+  ? basicAuth({
+      users: { [parityUser]: parityPassword },
+      challenge: true,
+    })
+  : null;
+
 // Middleware
 app.use(express.json());
+app.use(
+  cors({
+    origin: '*',
+  })
+);
+
+// Do not serve parity UI from static (would bypass Basic auth)
+app.use((req, res, next) => {
+  if (req.path === '/parity-check.html') {
+    return res.status(404).send('Not found');
+  }
+  next();
+});
+
+if (parityAuthEnabled) {
+  app.get('/parity-check', parityBasicAuth, (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'parity-check.html'));
+  });
+
+  app.get('/api/parity/default-api-key', parityBasicAuth, (req, res) => {
+    res.json({
+      defaultApiKey: process.env.PARITY_DEFAULT_API_KEY || '',
+    });
+  });
+} else {
+  console.warn(
+    '[parity-check] Disabled: set PARITY_CHECK_USER and PARITY_CHECK_PASSWORD in .env'
+  );
+}
+
 app.use(express.static('public'));
-app.use(cors({
-  origin: '*' // Correctly configure the origin
-}));
 
 // Configure multer for file uploads
 const upload = multer({ dest: 'uploads/' });
