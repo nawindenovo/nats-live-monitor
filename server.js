@@ -3,6 +3,8 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const yaml = require('js-yaml');
+const swaggerUi = require('swagger-ui-express');
 const basicAuth = require('express-basic-auth');
 const { connect, StringCodec, credsAuthenticator } = require('nats');
 const multer = require('multer');
@@ -22,6 +24,26 @@ const parityBasicAuth = parityAuthEnabled
       challenge: true,
     })
   : null;
+
+const docsUser = process.env.TOTP_DOCS_USER;
+const docsPassword = process.env.TOTP_DOCS_PASSWORD;
+const docsAuthEnabled = Boolean(docsUser && docsPassword);
+
+const docsBasicAuth = docsAuthEnabled
+  ? basicAuth({
+      users: { [docsUser]: docsPassword },
+      challenge: true,
+    })
+  : null;
+
+let totpOpenApiDoc = null;
+try {
+  totpOpenApiDoc = yaml.load(
+    fs.readFileSync(path.join(__dirname, 'docs', 'openapi-totp-mfa.yaml'), 'utf8')
+  );
+} catch (err) {
+  console.warn('[docs/totp-mfa] Failed to load OpenAPI YAML:', err.message);
+}
 
 // Middleware
 app.use(express.json());
@@ -53,6 +75,28 @@ if (parityAuthEnabled) {
   console.warn(
     '[parity-check] Disabled: set PARITY_CHECK_USER and PARITY_CHECK_PASSWORD in .env'
   );
+}
+
+// TOTP MFA OpenAPI — separate URL from NATS dashboard
+if (totpOpenApiDoc) {
+  const swaggerSetup = swaggerUi.setup(totpOpenApiDoc, {
+    explorer: true,
+    customCss: '.swagger-ui .topbar { display: none }',
+    swaggerOptions: { validatorUrl: null },
+    customSiteTitle: 'Portal TOTP MFA API',
+  });
+
+  if (docsAuthEnabled) {
+    app.use('/docs/totp-mfa', docsBasicAuth, swaggerUi.serve, swaggerSetup);
+  } else {
+    app.use('/docs/totp-mfa', swaggerUi.serve, swaggerSetup);
+    console.warn(
+      '[docs/totp-mfa] Open (no Basic auth). Set TOTP_DOCS_USER and TOTP_DOCS_PASSWORD to protect.'
+    );
+  }
+  console.log(`[docs/totp-mfa] Swagger UI at http://localhost:${port}/docs/totp-mfa`);
+} else {
+  console.warn('[docs/totp-mfa] Disabled: docs/openapi-totp-mfa.yaml missing or invalid');
 }
 
 app.use(express.static('public'));

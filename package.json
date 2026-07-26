@@ -14,9 +14,11 @@
     "dotenv": "^17.4.2",
     "express": "^5.1.0",
     "express-basic-auth": "^1.2.1",
+    "js-yaml": "^5.2.2",
     "multer": "^2.0.2",
     "nats": "^2.29.3",
     "nodemon": "^3.1.10",
+    "swagger-ui-express": "^5.0.1",
     "ws": "^8.18.3"
   }
 }
