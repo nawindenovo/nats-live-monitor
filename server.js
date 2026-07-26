@@ -77,18 +77,53 @@ if (parityAuthEnabled) {
   );
 }
 
-// TOTP MFA OpenAPI — separate URL from NATS dashboard
+// TOTP MFA OpenAPI — separate URL from NATS dashboard.
+// Load via swaggerUrl (not inline) so `$` + backtick in descriptions cannot break
+// swagger-ui-express String.replace embedding (Invalid token in swagger-ui-init.js).
 if (totpOpenApiDoc) {
-  const swaggerSetup = swaggerUi.setup(totpOpenApiDoc, {
+  const openApiJsonPath = '/docs/totp-mfa/openapi.json';
+  const serveOpenApiJson = (req, res) => {
+    res.json(totpOpenApiDoc);
+  };
+  const swaggerSetup = swaggerUi.setup(null, {
     explorer: true,
-    customCss: '.swagger-ui .topbar { display: none }',
-    swaggerOptions: { validatorUrl: null },
+    customCss: `
+      .swagger-ui .topbar { display: none }
+      .swagger-ui .info { margin: 20px 0 10px }
+      .swagger-ui .info .title { font-size: 24px }
+      .swagger-ui .opblock-description-wrapper p,
+      .swagger-ui .opblock-external-docs-wrapper p,
+      .swagger-ui .opblock-title_normal p { font-size: 13px; margin: 0 0 6px }
+      .swagger-ui .markdown code,
+      .swagger-ui .renderedMarkdown code {
+        background: transparent !important;
+        padding: 0 !important;
+        font-weight: 600;
+      }
+    `,
+    customCssUrl: '/swagger-totp-theme.css',
+    customJs: '/swagger-totp-theme.js',
+    customJsStr: `(function(){try{var t=localStorage.getItem('totp-swagger-theme')||'light';document.documentElement.setAttribute('data-theme',t);document.documentElement.style.colorScheme=t;}catch(e){document.documentElement.setAttribute('data-theme','light');document.documentElement.style.colorScheme='light';}})();`,
     customSiteTitle: 'Portal TOTP MFA API',
+    swaggerUrl: openApiJsonPath,
+    swaggerOptions: {
+      validatorUrl: null,
+      docExpansion: 'list',
+      defaultModelsExpandDepth: -1,
+      defaultModelExpandDepth: 1,
+      filter: true,
+      tryItOutEnabled: true,
+      displayRequestDuration: true,
+      tagsSorter: 'alpha',
+      operationsSorter: 'alpha',
+    },
   });
 
   if (docsAuthEnabled) {
+    app.get(openApiJsonPath, docsBasicAuth, serveOpenApiJson);
     app.use('/docs/totp-mfa', docsBasicAuth, swaggerUi.serve, swaggerSetup);
   } else {
+    app.get(openApiJsonPath, serveOpenApiJson);
     app.use('/docs/totp-mfa', swaggerUi.serve, swaggerSetup);
     console.warn(
       '[docs/totp-mfa] Open (no Basic auth). Set TOTP_DOCS_USER and TOTP_DOCS_PASSWORD to protect.'

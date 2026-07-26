@@ -1,0 +1,85 @@
+/* Default: light (overrides browser Auto Dark Mode on this page) */
+html {
+  color-scheme: light;
+}
+
+html,
+body {
+  background: #fafafa !important;
+  color: #3b4151 !important;
+}
+
+html[data-theme='dark'] {
+  color-scheme: dark;
+}
+
+html[data-theme='dark'],
+html[data-theme='dark'] body {
+  background: #1b1b1b !important;
+  color: #f0f0f0 !important;
+}
+
+html[data-theme='dark'] .swagger-ui,
+html[data-theme='dark'] .swagger-ui .info .title,
+html[data-theme='dark'] .swagger-ui .info li,
+html[data-theme='dark'] .swagger-ui .info p,
+html[data-theme='dark'] .swagger-ui .info table,
+html[data-theme='dark'] .swagger-ui .opblock .opblock-summary-description,
+html[data-theme='dark'] .swagger-ui .opblock-description-wrapper p,
+html[data-theme='dark'] .swagger-ui .opblock-external-docs-wrapper p,
+html[data-theme='dark'] .swagger-ui .tab li,
+html[data-theme='dark'] .swagger-ui .response-col_status,
+html[data-theme='dark'] .swagger-ui .response-col_links,
+html[data-theme='dark'] .swagger-ui table thead tr td,
+html[data-theme='dark'] .swagger-ui table thead tr th,
+html[data-theme='dark'] .swagger-ui .parameter__name,
+html[data-theme='dark'] .swagger-ui .parameter__type,
+html[data-theme='dark'] .swagger-ui label,
+html[data-theme='dark'] .swagger-ui .response-col_description,
+html[data-theme='dark'] .swagger-ui .scheme-container {
+  color: #e8e8e8 !important;
+}
+
+html[data-theme='dark'] .swagger-ui .scheme-container,
+html[data-theme='dark'] .swagger-ui .opblock,
+html[data-theme='dark'] .swagger-ui section.models,
+html[data-theme='dark'] .swagger-ui .dialog-ux .modal-ux {
+  background: #242424 !important;
+}
+
+html[data-theme='dark'] .swagger-ui .opblock .opblock-section-header {
+  background: #2c2c2c !important;
+}
+
+html[data-theme='dark'] .swagger-ui input,
+html[data-theme='dark'] .swagger-ui textarea,
+html[data-theme='dark'] .swagger-ui select {
+  background: #111 !important;
+  color: #f0f0f0 !important;
+  border-color: #444 !important;
+}
+
+html[data-theme='dark'] .swagger-ui .btn {
+  color: #f0f0f0;
+}
+
+#totp-theme-toggle {
+  position: fixed;
+  top: 12px;
+  right: 16px;
+  z-index: 10000;
+  border: 1px solid #c8c8c8;
+  background: #fff;
+  color: #222;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font: 600 13px/1.2 system-ui, sans-serif;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+}
+
+html[data-theme='dark'] #totp-theme-toggle {
+  background: #2a2a2a;
+  color: #f2f2f2;
+  border-color: #555;
+}

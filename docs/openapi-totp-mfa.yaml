@@ -3,238 +3,39 @@ info:
   title: Portal Backend — TOTP Authenticator Login API
   version: 1.0.0
   description: |
-    # Overview
+    TOTP MFA login APIs under /v1/mfa.
 
-    Portal-backend APIs for **configurable TOTP (authenticator app) MFA on login only**.
-    Mounted at `/v1/mfa` (`server.js` → `app.use("/v1/mfa", mfaRoute)`).
+    No Bearer on these calls. validateLogin returns session id — send id + email on later steps.
+    On success you get accessToken for other portal APIs.
 
-    Eligibility (all must be true):
-    1. `TOTP_ENABLED=true`
-    2. `user.userType` exact-match in `TOTP_ENABLED_ROLES` (e.g. `SYSTEM,ISO`)
-    3. `users.totpBypass === false` / `0`
+    Enrolled: validateLogin → totp/verify
+    First enroll: validateLogin → verifyOTP → totp/verify-setup
 
-    If any fail → **legacy MFA** path (unchanged). Proxy login-as is **out of scope** (zero TOTP changes).
+    Rate limits (IP): LOGIN 5/5s block 300s · RETRY 20/60s block 120s
 
-    ---
-
-    # Authentication (read this first)
-
-    ## What these endpoints do **not** use
-
-    - **No** `Authorization: Bearer …` header on any path in this document
-    - **No** API key from the browser / Swagger “Try it out”
-    - **No** cookie session for the MFA challenge (binding is request body + DB row)
-    - Swagger UI **Authorize** is intentionally unused for these calls (`security: []`)
-
-    ## How the portal authenticates the caller (pre-login)
-
-    These are **pre-auth challenge APIs**. Identity is proven in stages:
-
-    | Stage | Proof | Where it lives |
-    |-------|--------|----------------|
-    | 1. Password | `email` + AES-encrypted `password` (+ captcha / fingerprint when required) | `POST /validateLogin` body |
-    | 2. Pre-auth session | Response returns `id` (UUID). Every later call must send the same `id` + matching `email` | Request JSON body — **not** a header |
-    | 3. Second factor | Email OTP and/or 6-digit authenticator `code` | Request JSON body |
-    | 4. Terms (if required) | `isTermsCheck=true` + `UserRoleType` on the **final** factor call | Request JSON body |
-    | 5. Login complete | Response includes `accessToken` (JWT) | Use on **other** portal APIs only |
-
-    Server validates the pre-auth session row: `pwdVerified`, not expired, status `PENDING`/`ACTIVE`, and correct `totpFlow` (`VERIFY` vs `ENROLL`). Wrong or expired `id` → **400**.
-
-    ## After login (JWT — out of scope for these routes)
-
-    Successful `/totp/verify`, `/totp/verify-setup`, or legacy MFA login returns `accessToken`.
-
-    Call authenticated portal APIs with:
-
-    ```http
-    Authorization: Bearer <accessToken>
-    ```
-
-    Do **not** send that Bearer token back to `/v1/mfa/validateLogin`, `/verifyOTP`, or `/totp/*`.
-
-    ## Portal → Java MFA service (server-to-server only)
-
-    Portal-backend calls the Java MFA service with:
-
-    ```http
-    X-API-Key: <TOTP_API_KEY>
-    ```
-
-    `TOTP_API_KEY` is **never** exposed to the FE or to Swagger Try it out. Documented here for operators only.
-
-    ## How to use Swagger UI (“Try it out”)
-
-    1. Select server (e.g. local portal-backend host + `/v1/mfa`).
-    2. Call **`POST /validateLogin`** with real `email` / encrypted `password` / `fingerPrintData`.
-    3. Copy `id` from the **200** response.
-    4. Paste `id` + same `email` into the next operation (`/verifyOTP` or `/totp/verify` / `/totp/verify-setup`).
-    5. Fill OTP or 6-digit `code` as required by the flow.
-    6. On success, note `accessToken` — that is for other APIs, not for Authorize on this page.
-
-    Rate limits still apply (IP-based). Exhausting them returns **429**.
-
-    ---
-
-    # Rate limiting (current)
-
-    IP-based Redis limiters (`middleware/tokenBucket.js` + `middleware/rateLimitConfig.js`).
-    Env format: `points,durationSeconds,blockSeconds`.
-
-    | Env | Default | Applied to | Meaning |
-    |-----|---------|------------|---------|
-    | `LOGIN_RATE_LIMIT` | `5,5,300` | `POST /validateLogin` | **5** attempts per **5s** window; on exceed, block **300s** (5 min) |
-    | `RETRY_RATE_LIMIT` | `20,60,120` | `POST /resendOTP`, `POST /verifyOTP`, `POST /totp/verify`, `POST /totp/verify-setup` | **20** attempts per **60s**; on exceed, block **120s** (2 min) |
-
-    Key: client IP (`X-Forwarded-For` first hop, else socket address).
-
-    On limit exceeded → **HTTP 429**
-    ```json
-    { "message": "You've made too many attempts in a short period of time, please try again" }
-    ```
-
-    Sample `.env`:
-    ```bash
-    LOGIN_RATE_LIMIT=5,5,300
-    RETRY_RATE_LIMIT=20,60,120
-    ```
-
-    Invalid / missing CSV → shipped defaults above (fail open to defaults, not unlimited).
-
-    ---
-
-    # Configuration (TOTP)
-
-    ```bash
-    TOTP_ENABLED=true
-    TOTP_ENABLED_ROLES=SYSTEM,ISO
-    TOTP_SERVICE_URL=https://auth.denovosystem.tech/twoFactorAuth
-    TOTP_API_KEY=<secret>          # never sent to FE
-    MFA=ON                         # legacy email OTP still used for first-time enroll
-    TERMS_ALLOW_USERS=["SYSTEM"]   # JSON array; terms only for listed roles
-    ```
-
-    Outbound Java (portal → MFA service, fail-closed):
-    - `GET  {TOTP_SERVICE_URL}/api/v1/mfa/status/{userId}`
-    - `POST {TOTP_SERVICE_URL}/api/v1/mfa/setup`
-    - `POST {TOTP_SERVICE_URL}/api/v1/mfa/verify`
-    - `POST {TOTP_SERVICE_URL}/api/v1/mfa/verify-setup`
-    Header: `X-API-Key: {TOTP_API_KEY}`
-
-    ---
-
-    # Session model (server-owned)
-
-    | Column | Values / meaning |
-    |--------|------------------|
-    | `totpApplicable` | `1` when TOTP rules applied at password-OK |
-    | `totpFlow` | `VERIFY` \| `ENROLL` \| `NULL` (legacy) |
-    | `totpEmailOtpVerified` | `1` after email OTP during enrollment |
-    | `pwdVerified` | `1` after password OK |
-    | `userId` / `email` | Bound identity for Java + gates |
-    | `expiry` / `status` | Session must be unexpired and PENDING/ACTIVE |
-
-    ---
-
-    # Ordered flows
-
-    ## A) Already enrolled (Java `mfaEnabled=true`)
-
-    ```
-    1. POST /validateLogin          [LOGIN_RATE_LIMIT]
-         → 200 totpVerificationRequired + session id
-    2. FE → /auth/totp/verify
-    3. POST /totp/verify            [RETRY_RATE_LIMIT]
-         → Java verify → (terms if needed) → JWT (users.login)
-    ```
-
-    Order of gates on step 3: **active VERIFY session → valid 6-digit TOTP → terms (if required) → JWT**.
-
-    ## B) First-time enrollment (Java `mfaEnabled=false`)
-
-    ```
-    1. POST /validateLogin          [LOGIN_RATE_LIMIT]
-         → 200 totpEnrollmentRequired + email OTP sent + session totpFlow=ENROLL
-    2. FE → /auth/totp/setup (email step)  — NO Terms UI here
-    3. POST /verifyOTP              [RETRY_RATE_LIMIT]
-         → email OTP OK → Java setup → 200 totpEnrollmentPending + totpSetup (QR)
-         → marks totpEmailOtpVerified=1
-    4. Optional: POST /resendOTP    [RETRY_RATE_LIMIT] if email not received
-    5. FE QR → Next → TOTP entry (+ Terms UI only on this final step if needed)
-    6. POST /totp/verify-setup      [RETRY_RATE_LIMIT]
-         → requires ENROLL + email OTP done → Java verify-setup → terms → JWT
-    ```
-
-    Order of gates on step 6: **active ENROLL session → email OTP verified → valid 6-digit TOTP → terms (if required) → JWT**.
-
-    ## C) Legacy (not TOTP-eligible or totpBypass=1)
-
-    ```
-    1. POST /validateLogin
-    2. Optional legacy email MFA: verifyOTP / resendOTP
-    3. JWT (existing behavior)
-    ```
-
-    ## Terms rule (locked)
-
-    `TOTP ≡ legacy MFA` for terms: **factors first, terms last before JWT**.
-    - Email OTP / QR steps: no terms requirement for ENROLL
-    - Final `/totp/verify` or `/totp/verify-setup`: if `UserRoleType` ∈ `TERMS_ALLOW_USERS` and terms not accepted → must send `isTermsCheck=true` or **401**
-
-    ## Code rules
-
-    Authenticator codes are **exactly 6 digits** (`^[0-9]{6}$`). No backup-code length on portal APIs.
-
-# All operations in this spec are pre-auth: no HTTP Authorization header.
 security: []
 
 servers:
+  - url: https://api.denovosystem.tech/v1/mfa
+    description: Dev API (api.denovosystem.tech)
   - url: http://localhost:8080/v1/mfa
-    description: Local portal-backend (adjust PORT if needed)
-  - url: /v1/mfa
-    description: Same-origin relative (only if reverse-proxied to portal API)
+    description: Local portal-backend
 
 tags:
-  - name: Auth-Notes
-    description: |
-      No Bearer/API-key on these routes. Bind with body `id` + `email` after validateLogin.
-      JWT (`accessToken`) is only returned on success for other portal APIs.
-  - name: 1-Password
-    description: Step 1 — password + branch (establishes pre-auth session `id`)
-  - name: 2-EmailOTP
-    description: Step 2 (enroll only) — email OTP + QR payload; requires session `id`
-  - name: 3-TOTP
-    description: Final authenticator step → JWT; requires session `id` + 6-digit code
-  - name: RateLimits
-    description: Documentation only — applied via middleware
+  - name: 1. Password
+    description: Start login — password check and MFA branch
+  - name: 2. Email OTP
+    description: Enrollment / legacy email OTP
+  - name: 3. Authenticator
+    description: TOTP verify or setup — issues JWT
 
 paths:
   /validateLogin:
     post:
-      tags: [1-Password, Auth-Notes]
+      tags: [1. Password]
       security: []
-      summary: "Step 1 — Validate password and branch into TOTP or legacy"
-      description: |
-        **Auth for this call:** `email` + encrypted `password` only (no Bearer).
-        **On success:** returns pre-auth session `id` — copy it for all later MFA steps.
-        **Order in pipeline:** first portal call after user submits login form.
-
-        **Rate limit:** `LOGIN_RATE_LIMIT` (default **5 / 5s**, block **300s**), key = IP.
-        Middleware: `loginRateLimitter`.
-
-        **Also may enforce:**
-        - Client `version` vs server `VERSION` → **426** if mismatch
-        - Captcha when `ENABLE_CAPTCHA=true` and `MFA=ON` (unless email in `API_TESTING_EMAILS`)
-
-        **After password OK (`validateLogin` controller):**
-        1. If TOTP not applicable → continue legacy MFA / login in `mfaRoute` (this handler returns false from TOTP orchestrator)
-        2. Call Java `GET .../status/{userId}`
-        3. `mfaEnabled=true` → create session `totpFlow=VERIFY` → **`totpVerificationRequired`**
-        4. `mfaEnabled=false` → invalidate prior pending ENROLL sessions, send email OTP, session `totpFlow=ENROLL` → **`totpEnrollmentRequired`**
-        5. Java down / error → **503/4xx**, no silent legacy bypass for eligible users
-
-        **Next client step:**
-        - Verification → UI `/auth/totp/verify` then `POST /totp/verify`
-        - Enrollment → UI `/auth/totp/setup` then `POST /verifyOTP`
+      summary: Validate password and start MFA
+      description: Returns session id. Next is totp/verify (enrolled) or verifyOTP (enroll).
       operationId: mfaValidateLogin
       requestBody:
         required: true
@@ -260,7 +61,7 @@ paths:
                     plugIn: ""
       responses:
         '200':
-          description: Password accepted — inspect flags for next step
+          description: Password OK — check response flags for next step
           content:
             application/json:
               schema:
@@ -291,21 +92,21 @@ paths:
                     userType: SYSTEM
                     isTermsCheck: false
         '401':
-          description: Bad password, captcha failure, or unauthorized
+          description: Bad password or unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorMessage'
         '426':
-          description: Client version upgrade required (`VERSION` mismatch)
+          description: Client version upgrade required
         '429':
-          description: LOGIN_RATE_LIMIT exceeded
+          description: Rate limited
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/RateLimitError'
         '503':
-          description: TOTP service unavailable (fail-closed for eligible users)
+          description: TOTP service unavailable
           content:
             application/json:
               schema:
@@ -313,21 +114,10 @@ paths:
 
   /resendOTP:
     post:
-      tags: [2-EmailOTP, Auth-Notes]
+      tags: [2. Email OTP]
       security: []
-      summary: "Step 2b (optional) — Resend email OTP during enroll / legacy MFA"
-      description: |
-        **Auth for this call:** body `id` (pre-auth session from validateLogin) + `email`. No Bearer.
-
-        **When:** User on email OTP screen (TOTP enroll or legacy MFA) requests a new code.
-
-        **Rate limit:** `RETRY_RATE_LIMIT` (default **20 / 60s**, block **120s**), key = IP.
-        Middleware: `retryRateLimiter`.
-
-        **Requires:** Valid pre-auth session `id` + `email` with OTP/MFA tokens.
-        Persists new `otpToken` on the session OTP history when resend succeeds.
-
-        **Order:** Only after `validateLogin` returned an MFA/enroll session; before successful `verifyOTP`.
+      summary: Resend email OTP
+      description: Body needs id + email from validateLogin.
       operationId: mfaResendOTP
       requestBody:
         required: true
@@ -350,13 +140,13 @@ paths:
                     type: string
                 additionalProperties: true
         '400':
-          description: No session available for the user
+          description: No session available
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorMessage'
         '429':
-          description: RETRY_RATE_LIMIT exceeded
+          description: Rate limited
           content:
             application/json:
               schema:
@@ -364,26 +154,10 @@ paths:
 
   /verifyOTP:
     post:
-      tags: [2-EmailOTP, Auth-Notes]
+      tags: [2. Email OTP]
       security: []
-      summary: "Step 2 — Verify email OTP (enroll → QR; or legacy → login)"
-      description: |
-        **Auth for this call:** body `id` + `email` + email `otp`. No Bearer.
-        On TOTP enroll success → QR payload (still no JWT). On legacy success → may return JWT.
-
-        **Rate limit:** `RETRY_RATE_LIMIT` (default **20 / 60s**, block **120s**), key = IP.
-        Middleware: `retryRateLimiter`.
-
-        **TOTP enrollment path (`session.totpFlow=ENROLL`):**
-        1. Validate email OTP against legacy AUTH service
-        2. On success → Java `POST .../setup` → return QR / manual key
-        3. Mark `totpEmailOtpVerified=true`
-        4. **Do not** issue JWT; **do not** require terms on this step
-        5. Response includes `totpEnrollmentPending` + `totpSetup`
-
-        **Legacy path:** may require terms then call `users.login()`.
-
-        **Next (enroll):** FE shows QR → user scans → `POST /totp/verify-setup`.
+      summary: Verify email OTP
+      description: Enroll returns QR (totpSetup). Legacy may return JWT. Body id + email + otp.
       operationId: mfaVerifyOTP
       requestBody:
         required: true
@@ -393,7 +167,7 @@ paths:
               $ref: '#/components/schemas/VerifyOtpRequest'
             examples:
               enrollEmailOtp:
-                summary: Email OTP during TOTP enroll (terms skipped server-side for ENROLL)
+                summary: Email OTP during TOTP enroll
                 value:
                   id: "a4b5a963-9f73-4894-a56a-08032f6d1d6a"
                   email: user@example.com
@@ -423,11 +197,11 @@ paths:
                       manualEntryKey: "RHLE4ALPJGWEVEVSULH7I2GZDMJCJMNU"
                       otpauthUrl: "otpauth://totp/..."
         '400':
-          description: Invalid OTP, missing session, or Java setup failed
+          description: Invalid OTP or setup failed
         '401':
-          description: Terms required (legacy MFA when applicable)
+          description: Terms required (legacy)
         '429':
-          description: RETRY_RATE_LIMIT exceeded
+          description: Rate limited
           content:
             application/json:
               schema:
@@ -435,26 +209,10 @@ paths:
 
   /totp/verify:
     post:
-      tags: [3-TOTP, Auth-Notes]
+      tags: [3. Authenticator]
       security: []
-      summary: "Step 3 (enrolled) — Verify 6-digit authenticator code → JWT"
-      description: |
-        **Auth for this call:** body `id` + `email` + 6-digit `code` (+ terms fields if required). No Bearer.
-        **On success:** response includes `accessToken` for subsequent portal APIs.
-
-        **When:** User already enrolled (`totpVerificationRequired` from validateLogin).
-
-        **Rate limit:** `RETRY_RATE_LIMIT` (default **20 / 60s**, block **120s**), key = IP.
-        Middleware: `retryRateLimiter` + Joi `VerifyTotpSchema`.
-
-        **Server checks (in order):**
-        1. Session exists, `pwdVerified`, not expired, status PENDING/ACTIVE
-        2. `totpFlow === VERIFY` (ENROLL session → 400 Invalid MFA session)
-        3. Java `POST .../verify` with `session.userId` + 6-digit `code`
-        4. If role in `TERMS_ALLOW_USERS` and session terms not done → require `isTermsCheck` → `saveAgreement`
-        5. Clear TOTP flow flags → `users.login()` → JWT
-
-        **Code:** exactly 6 digits (`^[0-9]{6}$`). No backup codes.
+      summary: Verify TOTP (enrolled) and get JWT
+      description: Body id + email + 6-digit code. Optional terms fields.
       operationId: totpVerifyLogin
       requestBody:
         required: true
@@ -479,40 +237,25 @@ paths:
                   UserRoleType: ISO
       responses:
         '200':
-          description: Login success (JWT / user payload from users.login)
+          description: Login success
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/LoginSuccessResponse'
         '400':
-          description: Invalid/expired session or wrong totpFlow
+          description: Invalid or expired session
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorMessage'
-              examples:
-                wrongFlow:
-                  value:
-                    message: Invalid MFA session.
-                expired:
-                  value:
-                    message: Session expired. Please log in again.
         '401':
-          description: Bad TOTP code or terms not accepted
+          description: Bad code or terms not accepted
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorMessage'
-              examples:
-                badCode:
-                  value:
-                    message: Invalid verification code.
-                    attemptsRemaining: 3
-                terms:
-                  value:
-                    message: Please proceed with the Terms and Conditions.
         '429':
-          description: RETRY_RATE_LIMIT exceeded
+          description: Rate limited
           content:
             application/json:
               schema:
@@ -522,27 +265,10 @@ paths:
 
   /totp/verify-setup:
     post:
-      tags: [3-TOTP, Auth-Notes]
+      tags: [3. Authenticator]
       security: []
-      summary: "Step 3 (enroll) — Confirm setup with 6-digit code → JWT"
-      description: |
-        **Auth for this call:** body `id` + `email` + 6-digit `code` (+ terms if required).
-        Requires prior email OTP on the same ENROLL session. No Bearer.
-        **On success:** response includes `accessToken` for subsequent portal APIs.
-
-        **When:** After email OTP + QR (`totpEnrollmentPending`).
-
-        **Rate limit:** `RETRY_RATE_LIMIT` (default **20 / 60s**, block **120s**), key = IP.
-        Middleware: `retryRateLimiter` + Joi `VerifyTotpSetupSchema`.
-
-        **Server checks (in order):**
-        1. Session active / not expired / pwdVerified
-        2. `totpFlow === ENROLL` (VERIFY session → 400 Invalid MFA enrollment session)
-        3. `totpEmailOtpVerified === true` else **400** `Email verification must be completed first.`
-        4. Java `POST .../verify-setup` with 6-digit `code`
-        5. Terms if required → clear flow → `users.login()` → JWT
-
-        **Cannot skip email OTP.** Calling this right after validateLogin fails step 3.
+      summary: Confirm TOTP setup (enroll) and get JWT
+      description: After verifyOTP QR step. Body id + email + 6-digit code.
       operationId: totpVerifySetup
       requestBody:
         required: true
@@ -566,18 +292,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/LoginSuccessResponse'
         '400':
-          description: Email not done, wrong flow, expired session, or invalid setup code
+          description: Email not done, wrong flow, or invalid code
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorMessage'
-              examples:
-                emailFirst:
-                  value:
-                    message: Email verification must be completed first.
-                wrongFlow:
-                  value:
-                    message: Invalid MFA enrollment session.
         '401':
           description: Terms not accepted when required
           content:
@@ -585,7 +304,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorMessage'
         '429':
-          description: RETRY_RATE_LIMIT exceeded
+          description: Rate limited
           content:
             application/json:
               schema:
@@ -599,19 +318,13 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: |
-        Returned as `accessToken` after successful MFA / login.
-        **Not used on any `/v1/mfa` operation in this document.**
-        Use only on authenticated portal routes after login completes.
-        Do not click Authorize for Try it out on these MFA endpoints.
+      description: accessToken from login success. Not used on these MFA challenge routes.
 
     JavaMfaApiKey:
       type: apiKey
       in: header
       name: X-API-Key
-      description: |
-        Server-to-server only (portal-backend → Java MFA service).
-        Value = env `TOTP_API_KEY`. Never sent by FE or Swagger Try it out.
+      description: Portal-backend to Java MFA only (TOTP_API_KEY). Never for FE/Swagger.
 
   schemas:
     FingerPrintData:
