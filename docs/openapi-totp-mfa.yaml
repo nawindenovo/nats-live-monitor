@@ -18,8 +18,8 @@ security: []
 servers:
   - url: https://api.denovosystem.tech/v1/mfa
     description: Dev API (api.denovosystem.tech)
-  - url: http://localhost:8080/v1/mfa
-    description: Local portal-backend
+  - url: https://api.denovosystem.net/v1/mfa
+    description: QA API (api.denovosystem.net)
 
 tags:
   - name: 1. Password
