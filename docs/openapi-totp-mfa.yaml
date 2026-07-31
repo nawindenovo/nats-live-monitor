@@ -197,9 +197,17 @@ paths:
                       manualEntryKey: "RHLE4ALPJGWEVEVSULH7I2GZDMJCJMNU"
                       otpauthUrl: "otpauth://totp/..."
         '400':
-          description: Invalid OTP or setup failed
+          description: Invalid OTP, no session, or MFA setup failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
         '401':
-          description: Terms required (legacy)
+          description: Terms required (legacy non-TOTP path)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
         '429':
           description: Rate limited
           content:
@@ -243,13 +251,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/LoginSuccessResponse'
         '400':
-          description: Invalid or expired session
+          description: Invalid/expired session or wrong authenticator code
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorMessage'
         '401':
-          description: Bad code or terms not accepted
+          description: Terms required (TERMS_ALLOW_USERS) and isTermsCheck is false
           content:
             application/json:
               schema:
@@ -262,6 +270,10 @@ paths:
                 $ref: '#/components/schemas/RateLimitError'
         '503':
           description: Java MFA unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
 
   /totp/verify-setup:
     post:
@@ -292,13 +304,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/LoginSuccessResponse'
         '400':
-          description: Email not done, wrong flow, or invalid code
+          description: Email OTP not done, wrong flow/session, or invalid authenticator code
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorMessage'
         '401':
-          description: Terms not accepted when required
+          description: Terms required (TERMS_ALLOW_USERS) and isTermsCheck is false
           content:
             application/json:
               schema:
@@ -311,6 +323,10 @@ paths:
                 $ref: '#/components/schemas/RateLimitError'
         '503':
           description: Java MFA unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
 
 components:
   securitySchemes:
@@ -353,7 +369,7 @@ components:
           type: string
           description: Portal FE AES-encrypted password (LOGIN_TOKEN). This is the Stage-1 credential — not a Bearer token.
         captchaToken: { type: string, nullable: true }
-        version: { type: string, nullable: true }
+        version: { type: string, nullable: true, description: 'Must match portal-backend VERSION or returns 426' }
         fingerPrintData:
           $ref: '#/components/schemas/FingerPrintData'
         whitelabelData: {}
@@ -509,11 +525,16 @@ components:
 
     ErrorMessage:
       type: object
+      description: |
+        Portal MFA error body. `message` is always the user-facing text.
+        `type` mirrors MESSAGE_TYPE (e.g. MODAL) when set.
+        `attemptsRemaining` may appear on failed /totp/verify.
+        `code` is optional and usually omitted on these portal MFA routes (Swagger may show type placeholder "string").
       properties:
         message: { type: string }
-        type: { type: string }
-        attemptsRemaining: { type: integer }
-        code: { type: string }
+        type: { type: string, description: 'MESSAGE_TYPE — e.g. MODAL for modal UI' }
+        attemptsRemaining: { type: integer, description: 'Present on some failed /totp/verify responses' }
+        code: { type: string, description: 'Optional; not used by most portal MFA error paths' }
 
     RateLimitError:
       type: object
